@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#050505">
-  <link rel="manifest" href='data:application/manifest+json,{"name":"GK Finance","short_name":"GKFinance","display":"standalone","background_color":"#050505","theme_color":"#E86A17"}'>
+  <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="apple-touch-icon" href="icon.png">
   <style>
@@ -444,5 +444,11 @@
 
     renderUI();
   </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
 </body>
 </html>
