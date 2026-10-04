@@ -54,11 +54,20 @@
     #settings-status { font-size: 14px; margin-top: 10px; text-align: center; }
     .status-error { color: var(--spend-color); }
     .status-ok { color: #4CAF50; }
+
+    /* Стили для истории транзакций */
+    .history-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 5px; }
+    .history-item { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 10px; border-left: 4px solid transparent; font-size: 14px; }
+    .history-item.income { border-left-color: #4CAF50; }
+    .history-item.expense { border-left-color: var(--spend-color); }
+    .history-item.transfer { border-left-color: #2196F3; }
+    .history-date { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: block; }
+    .btn-clear { background: none; border: 1px solid var(--text-muted); color: var(--text-muted); padding: 5px 10px; font-size: 12px; }
+    .empty-history { text-align: center; color: var(--text-muted); font-size: 14px; padding: 15px 0; }
   </style>
 </head>
 <body>
 
-  <!-- Блок для вывода скрытых ошибок браузера -->
   <div id="debug-log" style="color: #ff4444; font-size: 14px; margin-bottom: 15px; font-weight: bold;"></div>
 
   <div class="header">
@@ -87,6 +96,15 @@
     <button class="btn-transfer" onclick="transferToPersonal()">Перевести прибыль</button>
   </div>
 
+  <!-- Блок истории -->
+  <div class="block">
+    <div class="block-title">
+      История
+      <button class="btn-clear" onclick="clearHistory()">Очистить</button>
+    </div>
+    <div class="history-list" id="history-container"></div>
+  </div>
+
   <div class="block block-settings">
     <div class="block-title">Настройка распределения (%)</div>
     <div id="settings-list"></div>
@@ -95,7 +113,6 @@
   </div>
 
   <script>
-    // Перехватчик ошибок: если что-то сломается, он напишет это красным на экране
     window.onerror = function(msg, url, line) {
       document.getElementById('debug-log').innerText += "\nСистемная ошибка: " + msg;
     };
@@ -112,20 +129,22 @@
     let appData = {
       personalBanks: {},
       workshop: { amortization: 0, profit: 0 },
-      config: []
+      config: [],
+      history: [] // Добавлен массив для истории
     };
 
     function initEmptyBanks() {
       appData.config = JSON.parse(JSON.stringify(defaultPersonalConfig));
       appData.config.forEach(cat => appData.personalBanks[cat.id] = 0);
       appData.workshop = { amortization: 0, profit: 0 };
+      appData.history = [];
     }
 
-    // Сменили ключ на v5, чтобы 100% сбросить старые сломанные сохранения
     try {
       const saved = localStorage.getItem('gkFinanceData_v5');
       if (saved) {
         appData = JSON.parse(saved);
+        if (!appData.history) appData.history = []; // Защита для старых сохранений
       } else {
         initEmptyBanks();
       }
@@ -138,11 +157,37 @@
       renderUI();
     }
 
+    // --- Функция добавления записи в историю ---
+    function logHistory(text, type) {
+      const now = new Date();
+      // Формируем красивую дату: "04.10.2026 14:30"
+      const dateStr = now.toLocaleDateString('ru-RU') + ' ' + now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
+      
+      // Добавляем запись в начало массива
+      appData.history.unshift({ date: dateStr, text: text, type: type });
+      
+      // Оставляем только последние 50 записей, чтобы не забивать память
+      if (appData.history.length > 50) {
+        appData.history.pop();
+      }
+    }
+
+    function clearHistory() {
+      if (confirm("Вы уверены, что хотите удалить всю историю? Балансы останутся без изменений.")) {
+        appData.history = [];
+        saveData();
+      }
+    }
+
+    // --- Логика финансов с логированием ---
     function addWorkIncome(amount = null) {
       const input = document.getElementById('work-income');
       const val = amount !== null ? amount : parseFloat(input.value);
       if (isNaN(val) || val <= 0) return;
+      
       appData.config.forEach(cat => appData.personalBanks[cat.id] += val * (cat.percent / 100));
+      if (amount === null) logHistory(`Пополнение ЗП: +${val.toFixed(2)} BYN`, 'income');
+      
       if (input) input.value = '';
       saveData();
     }
@@ -151,8 +196,11 @@
       const input = document.getElementById('workshop-income');
       const val = parseFloat(input.value);
       if (isNaN(val) || val <= 0) return;
+      
       appData.workshop.amortization += val * 0.30;
       appData.workshop.profit += val * 0.70;
+      logHistory(`Доход мастерской: +${val.toFixed(2)} BYN`, 'income');
+      
       if (input) input.value = '';
       saveData();
     }
@@ -160,8 +208,10 @@
     function transferToPersonal() {
       const amountToTransfer = appData.workshop.profit;
       if (amountToTransfer <= 0) return;
+      
       appData.workshop.profit = 0;
       addWorkIncome(amountToTransfer);
+      logHistory(`Перевод прибыли в личный: ${amountToTransfer.toFixed(2)} BYN`, 'transfer');
     }
 
     function toggleSpendBlock(id) {
@@ -174,11 +224,18 @@
       const val = parseFloat(input.value);
       if (isNaN(val) || val <= 0) return;
 
+      let catName = '';
       if (type === 'personal') {
         appData.personalBanks[id] -= val;
+        const cat = appData.config.find(c => c.id === id);
+        catName = cat ? cat.name : 'Категория';
       } else if (type === 'workshop') {
         appData.workshop[id] -= val;
+        catName = id === 'amortization' ? 'Амортизация' : 'Прибыль';
       }
+      
+      logHistory(`Списание (${catName}): -${val.toFixed(2)} BYN`, 'expense');
+
       if (input) input.value = ''; 
       toggleSpendBlock(id); 
       saveData();
@@ -216,35 +273,37 @@
       alert("Новые пропорции сохранены!");
     }
 
+    // --- Отрисовка интерфейса ---
     function renderUI() {
+      // 1. Личный бюджет
       const workContainer = document.getElementById('work-categories');
-      if(!workContainer) return; 
-      workContainer.innerHTML = '';
-      let totalPersonal = 0;
-
-      appData.config.forEach(cat => {
-        const balance = appData.personalBanks[cat.id] || 0;
-        totalPersonal += balance;
-        workContainer.innerHTML += `
-          <div class="category-wrapper">
-            <div class="category" onclick="toggleSpendBlock('${cat.id}')">
-              <div class="cat-info">
-                <span class="cat-name">${cat.name}</span>
-                <span class="cat-percent">${cat.percent}%</span>
+      if(workContainer) {
+        workContainer.innerHTML = '';
+        let totalPersonal = 0;
+        appData.config.forEach(cat => {
+          const balance = appData.personalBanks[cat.id] || 0;
+          totalPersonal += balance;
+          workContainer.innerHTML += `
+            <div class="category-wrapper">
+              <div class="category" onclick="toggleSpendBlock('${cat.id}')">
+                <div class="cat-info">
+                  <span class="cat-name">${cat.name}</span>
+                  <span class="cat-percent">${cat.percent}%</span>
+                </div>
+                <span class="cat-value">${balance.toFixed(2)}</span>
               </div>
-              <span class="cat-value">${balance.toFixed(2)}</span>
+              <div class="spend-area" id="spend-area-${cat.id}">
+                <input type="number" id="spend-input-${cat.id}" placeholder="Сумма расхода" inputmode="decimal">
+                <button class="btn-spend" onclick="spendMoney('${cat.id}', 'personal')">Списать</button>
+              </div>
             </div>
-            <div class="spend-area" id="spend-area-${cat.id}">
-              <input type="number" id="spend-input-${cat.id}" placeholder="Сумма расхода" inputmode="decimal">
-              <button class="btn-spend" onclick="spendMoney('${cat.id}', 'personal')">Списать</button>
-            </div>
-          </div>
-        `;
-      });
-      
-      const totalEl = document.getElementById('total-personal');
-      if(totalEl) totalEl.innerText = totalPersonal.toFixed(2);
+          `;
+        });
+        const totalEl = document.getElementById('total-personal');
+        if(totalEl) totalEl.innerText = totalPersonal.toFixed(2);
+      }
 
+      // 2. Мастерская
       const wsContainer = document.getElementById('workshop-categories');
       if(wsContainer) {
         wsContainer.innerHTML = `
@@ -271,6 +330,7 @@
         `;
       }
 
+      // 3. Настройки
       const settingsContainer = document.getElementById('settings-list');
       if(settingsContainer) {
         settingsContainer.innerHTML = '';
@@ -282,11 +342,28 @@
             </div>
           `;
         });
+        checkSettingsSum();
       }
-      checkSettingsSum();
+
+      // 4. Отрисовка Истории
+      const historyContainer = document.getElementById('history-container');
+      if(historyContainer) {
+        if (appData.history.length === 0) {
+          historyContainer.innerHTML = `<div class="empty-history">Операций пока нет</div>`;
+        } else {
+          historyContainer.innerHTML = '';
+          appData.history.forEach(item => {
+            historyContainer.innerHTML += `
+              <div class="history-item ${item.type}">
+                <span class="history-date">${item.date}</span>
+                ${item.text}
+              </div>
+            `;
+          });
+        }
+      }
     }
 
-    // Принудительный старт
     renderUI();
   </script>
 </body>
