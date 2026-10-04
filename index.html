@@ -4,11 +4,62 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GK Finance</title>
-  <link rel="stylesheet" href="style.css">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="apple-touch-icon" href="icon.png">
+  <style>
+    :root {
+      --bg-color: #050505; 
+      --panel-bg: #1A262E; 
+      --accent: #E86A17;   
+      --spend-color: #D32F2F; 
+      --text-main: #FFFFFF;
+      --text-muted: #8B9EA8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-main); padding: 20px; padding-bottom: 80px; }
+    
+    .header { text-align: center; margin-bottom: 25px; }
+    .header h1 { font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
+    .header h1 span { color: var(--accent); }
+    
+    .block { background-color: var(--panel-bg); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-left: 4px solid var(--accent); }
+    .block-settings { border-left: 4px solid var(--text-muted); }
+    .block-title { font-size: 18px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+    
+    .input-group { display: flex; gap: 10px; margin-bottom: 15px; width: 100%; }
+    input { flex: 1 1 auto; min-width: 0; background: #0A1014; border: 1px solid #2B3D4A; color: white; padding: 12px; border-radius: 6px; font-size: 16px; outline: none; }
+    input:focus { border-color: var(--accent); }
+    
+    button { background-color: var(--accent); color: white; border: none; padding: 12px 15px; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+    button:disabled { background-color: #333; color: #777; }
+    .btn-transfer { background-color: #203442; border: 1px solid var(--accent); margin-top: 10px; width: 100%; }
+    .btn-spend { background-color: var(--spend-color); padding: 10px 15px; font-size: 14px; }
+    
+    .categories { display: flex; flex-direction: column; gap: 12px; }
+    .category-wrapper { background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; }
+    .category { padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .cat-info { display: flex; flex-direction: column; pointer-events: none; }
+    .cat-name { font-weight: 500; font-size: 15px; }
+    .cat-percent { font-size: 12px; color: var(--text-muted); }
+    .cat-value { font-size: 18px; font-weight: bold; color: var(--accent); pointer-events: none; }
+    
+    .spend-area { display: none; padding: 10px 15px 15px 15px; background: rgba(0,0,0,0.5); gap: 10px; border-top: 1px solid #2B3D4A; }
+    .spend-area.active { display: flex; }
+    .spend-area input { padding: 10px; font-size: 14px; }
+    
+    .total-balance { font-size: 14px; color: var(--text-muted); }
+    .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .setting-row span { font-size: 15px; }
+    .setting-row input { max-width: 80px; text-align: center; padding: 8px; }
+    #settings-status { font-size: 14px; margin-top: 10px; text-align: center; }
+    .status-error { color: var(--spend-color); }
+    .status-ok { color: #4CAF50; }
+  </style>
 </head>
 <body>
+
+  <!-- Блок для вывода скрытых ошибок браузера -->
+  <div id="debug-log" style="color: #ff4444; font-size: 14px; margin-bottom: 15px; font-weight: bold;"></div>
 
   <div class="header">
     <h1><span>GK</span> Finance</h1>
@@ -33,17 +84,210 @@
       <button onclick="addWorkshopIncome()">Внести</button>
     </div>
     <div class="categories" id="workshop-categories"></div>
-    <button class="btn-transfer" onclick="transferToPersonal()">Перевести прибыль в личный бюджет</button>
+    <button class="btn-transfer" onclick="transferToPersonal()">Перевести прибыль</button>
   </div>
 
   <div class="block block-settings">
     <div class="block-title">Настройка распределения (%)</div>
     <div id="settings-list"></div>
     <div id="settings-status" class="status-ok">Сумма: 100%</div>
-    <button id="btn-save-settings" class="btn-transfer" onclick="saveSettings()" style="margin-top: 15px; width: 100%;">Сохранить пропорции</button>
+    <button id="btn-save-settings" class="btn-transfer" onclick="saveSettings()">Сохранить пропорции</button>
   </div>
 
-  <!-- Скрипт логики загрузится в самом конце -->
-  <script src="core.js"></script>
+  <script>
+    // Перехватчик ошибок: если что-то сломается, он напишет это красным на экране
+    window.onerror = function(msg, url, line) {
+      document.getElementById('debug-log').innerText += "\nСистемная ошибка: " + msg;
+    };
+
+    const defaultPersonalConfig = [
+      { id: 'apartment', name: 'Квартира', percent: 35 },
+      { id: 'savings', name: 'Накопления', percent: 20 },
+      { id: 'car', name: 'Машина', percent: 15 },
+      { id: 'vacation', name: 'Отпуск', percent: 10 },
+      { id: 'leisure', name: 'Отдых', percent: 10 },
+      { id: 'clothes', name: 'Одежда', percent: 10 }
+    ];
+
+    let appData = {
+      personalBanks: {},
+      workshop: { amortization: 0, profit: 0 },
+      config: []
+    };
+
+    function initEmptyBanks() {
+      appData.config = JSON.parse(JSON.stringify(defaultPersonalConfig));
+      appData.config.forEach(cat => appData.personalBanks[cat.id] = 0);
+      appData.workshop = { amortization: 0, profit: 0 };
+    }
+
+    // Сменили ключ на v5, чтобы 100% сбросить старые сломанные сохранения
+    try {
+      const saved = localStorage.getItem('gkFinanceData_v5');
+      if (saved) {
+        appData = JSON.parse(saved);
+      } else {
+        initEmptyBanks();
+      }
+    } catch (e) {
+      initEmptyBanks();
+    }
+
+    function saveData() {
+      try { localStorage.setItem('gkFinanceData_v5', JSON.stringify(appData)); } catch (e) {}
+      renderUI();
+    }
+
+    function addWorkIncome(amount = null) {
+      const input = document.getElementById('work-income');
+      const val = amount !== null ? amount : parseFloat(input.value);
+      if (isNaN(val) || val <= 0) return;
+      appData.config.forEach(cat => appData.personalBanks[cat.id] += val * (cat.percent / 100));
+      if (input) input.value = '';
+      saveData();
+    }
+
+    function addWorkshopIncome() {
+      const input = document.getElementById('workshop-income');
+      const val = parseFloat(input.value);
+      if (isNaN(val) || val <= 0) return;
+      appData.workshop.amortization += val * 0.30;
+      appData.workshop.profit += val * 0.70;
+      if (input) input.value = '';
+      saveData();
+    }
+
+    function transferToPersonal() {
+      const amountToTransfer = appData.workshop.profit;
+      if (amountToTransfer <= 0) return;
+      appData.workshop.profit = 0;
+      addWorkIncome(amountToTransfer);
+    }
+
+    function toggleSpendBlock(id) {
+      const el = document.getElementById('spend-area-' + id);
+      if(el) el.classList.toggle('active');
+    }
+
+    function spendMoney(id, type = 'personal') {
+      const input = document.getElementById('spend-input-' + id);
+      const val = parseFloat(input.value);
+      if (isNaN(val) || val <= 0) return;
+
+      if (type === 'personal') {
+        appData.personalBanks[id] -= val;
+      } else if (type === 'workshop') {
+        appData.workshop[id] -= val;
+      }
+      if (input) input.value = ''; 
+      toggleSpendBlock(id); 
+      saveData();
+    }
+
+    function checkSettingsSum() {
+      let sum = 0;
+      const inputs = document.querySelectorAll('.setting-input');
+      inputs.forEach(input => sum += parseFloat(input.value) || 0);
+      
+      const statusEl = document.getElementById('settings-status');
+      const btnSave = document.getElementById('btn-save-settings');
+      if(!statusEl || !btnSave) return;
+
+      if (sum === 100) {
+        statusEl.innerText = 'Сумма: 100%';
+        statusEl.className = 'status-ok';
+        btnSave.disabled = false;
+      } else {
+        statusEl.innerText = 'Сумма: ' + sum + '% (Нужно 100%)';
+        statusEl.className = 'status-error';
+        btnSave.disabled = true;
+      }
+    }
+
+    function saveSettings() {
+      const inputs = document.querySelectorAll('.setting-input');
+      inputs.forEach(input => {
+        const id = input.dataset.id;
+        const newPercent = parseFloat(input.value) || 0;
+        const cat = appData.config.find(c => c.id === id);
+        if(cat) cat.percent = newPercent;
+      });
+      saveData();
+      alert("Новые пропорции сохранены!");
+    }
+
+    function renderUI() {
+      const workContainer = document.getElementById('work-categories');
+      if(!workContainer) return; 
+      workContainer.innerHTML = '';
+      let totalPersonal = 0;
+
+      appData.config.forEach(cat => {
+        const balance = appData.personalBanks[cat.id] || 0;
+        totalPersonal += balance;
+        workContainer.innerHTML += `
+          <div class="category-wrapper">
+            <div class="category" onclick="toggleSpendBlock('${cat.id}')">
+              <div class="cat-info">
+                <span class="cat-name">${cat.name}</span>
+                <span class="cat-percent">${cat.percent}%</span>
+              </div>
+              <span class="cat-value">${balance.toFixed(2)}</span>
+            </div>
+            <div class="spend-area" id="spend-area-${cat.id}">
+              <input type="number" id="spend-input-${cat.id}" placeholder="Сумма расхода" inputmode="decimal">
+              <button class="btn-spend" onclick="spendMoney('${cat.id}', 'personal')">Списать</button>
+            </div>
+          </div>
+        `;
+      });
+      
+      const totalEl = document.getElementById('total-personal');
+      if(totalEl) totalEl.innerText = totalPersonal.toFixed(2);
+
+      const wsContainer = document.getElementById('workshop-categories');
+      if(wsContainer) {
+        wsContainer.innerHTML = `
+          <div class="category-wrapper">
+            <div class="category" onclick="toggleSpendBlock('amortization')">
+               <div class="cat-info"><span class="cat-name">Амортизация (30%)</span></div>
+               <span class="cat-value">${(appData.workshop.amortization || 0).toFixed(2)}</span>
+            </div>
+            <div class="spend-area" id="spend-area-amortization">
+              <input type="number" id="spend-input-amortization" placeholder="Расход" inputmode="decimal">
+              <button class="btn-spend" onclick="spendMoney('amortization', 'workshop')">Списать</button>
+            </div>
+          </div>
+          <div class="category-wrapper" style="border: 1px dashed #E86A17;">
+            <div class="category" onclick="toggleSpendBlock('profit')">
+               <div class="cat-info"><span class="cat-name">Прибыль (70%)</span></div>
+               <span class="cat-value">${(appData.workshop.profit || 0).toFixed(2)}</span>
+            </div>
+            <div class="spend-area" id="spend-area-profit">
+              <input type="number" id="spend-input-profit" placeholder="Наличные" inputmode="decimal">
+              <button class="btn-spend" onclick="spendMoney('profit', 'workshop')">Списать</button>
+            </div>
+          </div>
+        `;
+      }
+
+      const settingsContainer = document.getElementById('settings-list');
+      if(settingsContainer) {
+        settingsContainer.innerHTML = '';
+        appData.config.forEach(cat => {
+          settingsContainer.innerHTML += `
+            <div class="setting-row">
+              <span>${cat.name}</span>
+              <div><input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> %</div>
+            </div>
+          `;
+        });
+      }
+      checkSettingsSum();
+    }
+
+    // Принудительный старт
+    renderUI();
+  </script>
 </body>
 </html>
