@@ -1,13 +1,4 @@
-// 1. Самая первая команда - гарантированное скрытие экрана через 1.5 сек
-setTimeout(() => {
-  const splash = document.getElementById('splash-screen');
-  if (splash) {
-    splash.style.opacity = '0';
-    setTimeout(() => { splash.style.display = 'none'; }, 500);
-  }
-}, 1500);
-
-// 2. Базовые настройки
+// Базовые настройки
 const defaultPersonalConfig = [
   { id: 'apartment', name: 'Квартира', percent: 35 },
   { id: 'savings', name: 'Накопления', percent: 20 },
@@ -25,12 +16,13 @@ let appData = {
   config: []
 };
 
+// Функция создания пустых копилок
 function initEmptyBanks() {
   appData.config = JSON.parse(JSON.stringify(defaultPersonalConfig));
   appData.config.forEach(cat => appData.personalBanks[cat.id] = 0);
 }
 
-// Загрузка данных
+// Загрузка данных из памяти
 try {
   const saved = localStorage.getItem('gkFinanceData_v2');
   if (saved) {
@@ -132,13 +124,13 @@ function saveSettings() {
   saveData();
   alert("Новые пропорции сохранены!");
 }
-// Отрисовка
+
+// Отрисовка интерфейса
 function renderUI() {
   try {
     const workContainer = document.getElementById('work-categories');
     workContainer.innerHTML = '';
     let totalPersonal = 0;
-
     appData.config.forEach(cat => {
       const balance = appData.personalBanks[cat.id] || 0;
       totalPersonal += balance;
@@ -196,8 +188,9 @@ function renderUI() {
     });
     checkSettingsSum();
   } catch (error) {
-    alert("Ошибка отрисовки интерфейса: " + error.message);
+    console.error("Ошибка при отрисовке: ", error);
   }
 }
 
+// Запуск приложения
 renderUI();
