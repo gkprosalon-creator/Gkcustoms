@@ -49,16 +49,17 @@
     
     .total-balance { font-size: 14px; color: var(--text-muted); }
     
-    /* Новые стили для режима чтения/редактирования */
-    .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; }
+    /* Исправленные стили для настроек (чтобы элементы не вылезали) */
+    .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 4px; }
     .setting-name { 
       background: transparent; border: 1px solid transparent; color: white; 
-      padding: 8px 4px; flex: 1; border-radius: 4px; font-size: 15px; outline: none; transition: 0.2s;
+      padding: 8px 4px; flex: 1; min-width: 0; border-radius: 4px; font-size: 15px; outline: none; transition: 0.2s;
+      text-overflow: ellipsis;
     }
     .setting-name:not([readonly]) { background: rgba(0,0,0,0.3); border: 1px dashed var(--accent); }
-    .setting-input { width: 60px; text-align: center; padding: 8px; font-size: 14px; }
+    .setting-input { width: 55px; text-align: center; padding: 8px 4px; font-size: 14px; }
     
-    .btn-action { background: none; border: none; cursor: pointer; font-size: 16px; padding: 5px; opacity: 0.8; }
+    .btn-action { background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px; opacity: 0.8; }
     .btn-action:hover { opacity: 1; }
     .add-row { padding-top: 15px; margin-top: 15px; border-top: 1px dashed #2B3D4A; }
     
@@ -145,6 +146,7 @@
     }
 
     try {
+      // Ключ памяти v7 оставлен специально, чтобы не сбросились текущие данные
       const saved = localStorage.getItem('gkFinanceData_v7');
       if (saved) {
         appData = JSON.parse(saved);
@@ -173,7 +175,6 @@
       }
     }
 
-    // Включение/выключение режима редактирования названия
     function toggleEdit(id) {
       const input = document.getElementById('cat-name-' + id);
       const btn = document.getElementById('btn-edit-' + id);
@@ -182,14 +183,13 @@
         input.removeAttribute('readonly');
         btn.innerText = '✅';
         input.focus();
-        // Ставим курсор в конец текста
         const val = input.value;
         input.value = '';
         input.value = val;
       } else {
         input.setAttribute('readonly', true);
         btn.innerText = '✏️';
-        saveSettings(false); // Сохраняем скрыто
+        saveSettings(false);
       }
     }
 
@@ -210,7 +210,7 @@
       });
       
       if (showAlert) {
-        saveData(); // saveData вызовет renderUI, что автоматически сбросит все поля в readonly
+        saveData(); 
         alert("Настройки и категории сохранены!");
       }
     }
@@ -409,12 +409,12 @@
         appData.config.forEach(cat => {
           settingsHTML += `
             <div class="setting-row">
-              <div style="display:flex; flex:1; align-items:center;">
+              <div style="display:flex; flex:1; align-items:center; min-width: 0;">
                 <input type="text" id="cat-name-${cat.id}" class="setting-name" data-id="${cat.id}" value="${cat.name}" readonly>
                 <button class="btn-action" id="btn-edit-${cat.id}" onclick="toggleEdit('${cat.id}')">✏️</button>
               </div>
-              <div style="display:flex; align-items:center;">
-                <input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> <span style="margin: 0 5px;">%</span>
+              <div style="display:flex; align-items:center; flex-shrink: 0;">
+                <input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> <span style="margin: 0 4px;">%</span>
                 <button class="btn-action" onclick="deleteCategory('${cat.id}')">❌</button>
               </div>
             </div>
@@ -423,11 +423,11 @@
         
         settingsHTML += `
           <div class="setting-row add-row">
-            <div style="display:flex; flex:1; align-items:center;">
-               <input type="text" id="new-cat-name" class="setting-name" placeholder="Новая категория..." style="border: 1px dashed #2B3D4A; background: rgba(0,0,0,0.3);">
+            <div style="display:flex; flex:1; align-items:center; min-width: 0;">
+               <input type="text" id="new-cat-name" class="setting-name" placeholder="Новая..." style="border: 1px dashed #2B3D4A; background: rgba(0,0,0,0.3);">
             </div>
-            <div style="display:flex; align-items:center;">
-              <input type="number" id="new-cat-percent" class="setting-input" placeholder="0" style="border: 1px solid #2B3D4A;" oninput="checkSettingsSum()"> <span style="margin: 0 5px;">%</span>
+            <div style="display:flex; align-items:center; flex-shrink: 0;">
+              <input type="number" id="new-cat-percent" class="setting-input" placeholder="0" style="border: 1px solid #2B3D4A;" oninput="checkSettingsSum()"> <span style="margin: 0 4px;">%</span>
               <button class="btn-action" onclick="addNewCategory()">➕</button>
             </div>
           </div>
