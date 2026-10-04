@@ -8,31 +8,23 @@ const defaultPersonalConfig = [
   { id: 'clothes', name: 'Одежда', percent: 10 }
 ];
 
-const workshopConfig = { amortizationPercent: 30, profitPercent: 70 };
-
 let appData = {
   personalBanks: {},
   workshop: { amortization: 0, profit: 0 },
   config: []
 };
 
-// Функция создания пустых копилок
 function initEmptyBanks() {
   appData.config = JSON.parse(JSON.stringify(defaultPersonalConfig));
   appData.config.forEach(cat => appData.personalBanks[cat.id] = 0);
+  appData.workshop = { amortization: 0, profit: 0 };
 }
 
-// Загрузка данных из памяти
+// ВАЖНО: Мы изменили ключ на gkFinanceData_v3, чтобы сбросить старый битый кэш
 try {
-  const saved = localStorage.getItem('gkFinanceData_v2');
+  const saved = localStorage.getItem('gkFinanceData_v3');
   if (saved) {
     appData = JSON.parse(saved);
-    if (!appData.config || appData.config.length === 0) {
-        appData.config = JSON.parse(JSON.stringify(defaultPersonalConfig));
-    }
-    appData.config.forEach(cat => {
-      if (appData.personalBanks[cat.id] === undefined) appData.personalBanks[cat.id] = 0;
-    });
   } else {
     initEmptyBanks();
   }
@@ -41,17 +33,16 @@ try {
 }
 
 function saveData() {
-  try { localStorage.setItem('gkFinanceData_v2', JSON.stringify(appData)); } catch (e) {}
+  try { localStorage.setItem('gkFinanceData_v3', JSON.stringify(appData)); } catch (e) {}
   renderUI();
 }
 
-// Функции пополнения
 function addWorkIncome(amount = null) {
   const input = document.getElementById('work-income');
   const val = amount !== null ? amount : parseFloat(input.value);
   if (isNaN(val) || val <= 0) return;
   appData.config.forEach(cat => appData.personalBanks[cat.id] += val * (cat.percent / 100));
-  input.value = '';
+  if (input) input.value = '';
   saveData();
 }
 
@@ -59,9 +50,9 @@ function addWorkshopIncome() {
   const input = document.getElementById('workshop-income');
   const val = parseFloat(input.value);
   if (isNaN(val) || val <= 0) return;
-  appData.workshop.amortization += val * (workshopConfig.amortizationPercent / 100);
-  appData.workshop.profit += val * (workshopConfig.profitPercent / 100);
-  input.value = '';
+  appData.workshop.amortization += val * 0.30;
+  appData.workshop.profit += val * 0.70;
+  if (input) input.value = '';
   saveData();
 }
 
@@ -72,7 +63,6 @@ function transferToPersonal() {
   addWorkIncome(amountToTransfer);
 }
 
-// Списание
 function toggleSpendBlock(id) {
   const el = document.getElementById('spend-area-' + id);
   if(el) el.classList.toggle('active');
@@ -88,12 +78,11 @@ function spendMoney(id, type = 'personal') {
   } else if (type === 'workshop') {
     appData.workshop[id] -= val;
   }
-  input.value = ''; 
+  if (input) input.value = ''; 
   toggleSpendBlock(id); 
   saveData();
 }
 
-// Настройки процентов
 function checkSettingsSum() {
   let sum = 0;
   const inputs = document.querySelectorAll('.setting-input');
@@ -101,7 +90,8 @@ function checkSettingsSum() {
   
   const statusEl = document.getElementById('settings-status');
   const btnSave = document.getElementById('btn-save-settings');
-  
+  if(!statusEl || !btnSave) return;
+
   if (sum === 100) {
     statusEl.innerText = Сумма: 100%;
     statusEl.className = 'status-ok';
@@ -125,18 +115,19 @@ function saveSettings() {
   alert("Новые пропорции сохранены!");
 }
 
-// Отрисовка интерфейса
 function renderUI() {
   try {
     const workContainer = document.getElementById('work-categories');
+    if(!workContainer) return; 
     workContainer.innerHTML = '';
     let totalPersonal = 0;
+
     appData.config.forEach(cat => {
       const balance = appData.personalBanks[cat.id] || 0;
       totalPersonal += balance;
-      workContainer.innerHTML += 
+      workContainer.innerHTML += `
         <div class="category-wrapper">
-          <div class="category" onclick="toggleSpendBlock('${cat.id}')">
+<div class="category" onclick="toggleSpendBlock('${cat.id}')">
             <div class="cat-info">
               <span class="cat-name">${cat.name}</span>
               <span class="cat-percent">${cat.percent}%</span>
@@ -150,47 +141,52 @@ function renderUI() {
         </div>
       ;
     });
-    document.getElementById('total-personal').innerText = totalPersonal.toFixed(2);
+    
+    const totalEl = document.getElementById('total-personal');
+    if(totalEl) totalEl.innerText = totalPersonal.toFixed(2);
 
     const wsContainer = document.getElementById('workshop-categories');
-    wsContainer.innerHTML = 
-      <div class="category-wrapper">
-        <div class="category" onclick="toggleSpendBlock('amortization')">
-           <div class="cat-info"><span class="cat-name">Амортизация (30%)</span></div>
-           <span class="cat-value">${appData.workshop.amortization.toFixed(2)}</span>
+    if(wsContainer) {
+      wsContainer.innerHTML = 
+        <div class="category-wrapper">
+          <div class="category" onclick="toggleSpendBlock('amortization')">
+             <div class="cat-info"><span class="cat-name">Амортизация (30%)</span></div>
+             <span class="cat-value">${(appData.workshop.amortization || 0).toFixed(2)}</span>
+          </div>
+          <div class="spend-area" id="spend-area-amortization">
+            <input type="number" id="spend-input-amortization" placeholder="Расход" inputmode="decimal">
+            <button class="btn-spend" onclick="spendMoney('amortization', 'workshop')">Списать</button>
+          </div>
         </div>
-        <div class="spend-area" id="spend-area-amortization">
-          <input type="number" id="spend-input-amortization" placeholder="Расход (материалы)" inputmode="decimal">
-          <button class="btn-spend" onclick="spendMoney('amortization', 'workshop')">Списать</button>
-        </div>
-      </div>
-      <div class="category-wrapper" style="border: 1px dashed var(--accent);">
-        <div class="category" onclick="toggleSpendBlock('profit')">
-           <div class="cat-info"><span class="cat-name">Прибыль (70%)</span></div>
-           <span class="cat-value">${appData.workshop.profit.toFixed(2)}</span>
-        </div>
-        <div class="spend-area" id="spend-area-profit">
-          <input type="number" id="spend-input-profit" placeholder="Снять наличные" inputmode="decimal">
-          <button class="btn-spend" onclick="spendMoney('profit', 'workshop')">Списать</button>
-        </div>
-      </div>
-    ;
-
-    const settingsContainer = document.getElementById('settings-list');
-    settingsContainer.innerHTML = '';
-    appData.config.forEach(cat => {
-      settingsContainer.innerHTML += 
-        <div class="setting-row">
-          <span>${cat.name}</span>
-          <div><input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> %</div>
+        <div class="category-wrapper" style="border: 1px dashed #E86A17;">
+          <div class="category" onclick="toggleSpendBlock('profit')">
+             <div class="cat-info"><span class="cat-name">Прибыль (70%)</span></div>
+             <span class="cat-value">${(appData.workshop.profit || 0).toFixed(2)}</span>
+          </div>
+          <div class="spend-area" id="spend-area-profit">
+            <input type="number" id="spend-input-profit" placeholder="Наличные" inputmode="decimal">
+            <button class="btn-spend" onclick="spendMoney('profit', 'workshop')">Списать</button>
+          </div>
         </div>
       ;
-    });
+    }
+
+    const settingsContainer = document.getElementById('settings-list');
+    if(settingsContainer) {
+      settingsContainer.innerHTML = '';
+      appData.config.forEach(cat => {
+        settingsContainer.innerHTML += 
+          <div class="setting-row">
+            <span>${cat.name}</span>
+            <div><input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> %</div>
+          </div>
+        `;
+      });
+    }
     checkSettingsSum();
   } catch (error) {
-    console.error("Ошибка при отрисовке: ", error);
+    alert("Ошибка: " + error.message);
   }
 }
 
-// Запуск приложения
 renderUI();
