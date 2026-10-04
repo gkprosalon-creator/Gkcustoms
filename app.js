@@ -1,12 +1,13 @@
-// Убираем экран загрузки после полной загрузки приложения
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    const splash = document.getElementById('splash-screen');
+// 1. Самая первая команда - гарантированное скрытие экрана через 1.5 сек
+setTimeout(() => {
+  const splash = document.getElementById('splash-screen');
+  if (splash) {
     splash.style.opacity = '0';
-    setTimeout(() => { splash.style.visibility = 'hidden'; }, 500);
-  }, 1500); // 1500 миллисекунд = 1.5 секунды
-});
+    setTimeout(() => { splash.style.display = 'none'; }, 500);
+  }
+}, 1500);
 
+// 2. Базовые настройки
 const defaultPersonalConfig = [
   { id: 'apartment', name: 'Квартира', percent: 35 },
   { id: 'savings', name: 'Накопления', percent: 20 },
@@ -29,6 +30,7 @@ function initEmptyBanks() {
   appData.config.forEach(cat => appData.personalBanks[cat.id] = 0);
 }
 
+// Загрузка данных
 try {
   const saved = localStorage.getItem('gkFinanceData_v2');
   if (saved) {
@@ -51,6 +53,7 @@ function saveData() {
   renderUI();
 }
 
+// Функции пополнения
 function addWorkIncome(amount = null) {
   const input = document.getElementById('work-income');
   const val = amount !== null ? amount : parseFloat(input.value);
@@ -77,6 +80,7 @@ function transferToPersonal() {
   addWorkIncome(amountToTransfer);
 }
 
+// Списание
 function toggleSpendBlock(id) {
   const el = document.getElementById('spend-area-' + id);
   if(el) el.classList.toggle('active');
@@ -92,11 +96,12 @@ function spendMoney(id, type = 'personal') {
   } else if (type === 'workshop') {
     appData.workshop[id] -= val;
   }
-  input.value = ''; // Очищаем поле после списания
-  toggleSpendBlock(id); // Скрываем блок после списания
+  input.value = ''; 
+  toggleSpendBlock(id); 
   saveData();
 }
 
+// Настройки процентов
 function checkSettingsSum() {
   let sum = 0;
   const inputs = document.querySelectorAll('.setting-input');
@@ -127,67 +132,72 @@ function saveSettings() {
   saveData();
   alert("Новые пропорции сохранены!");
 }
+// Отрисовка
 function renderUI() {
-  const workContainer = document.getElementById('work-categories');
-  workContainer.innerHTML = '';
-  let totalPersonal = 0;
+  try {
+    const workContainer = document.getElementById('work-categories');
+    workContainer.innerHTML = '';
+    let totalPersonal = 0;
 
-  appData.config.forEach(cat => {
-    const balance = appData.personalBanks[cat.id] || 0;
-    totalPersonal += balance;
-    workContainer.innerHTML += 
-      <div class="category-wrapper">
-        <div class="category" onclick="toggleSpendBlock('${cat.id}')">
-          <div class="cat-info">
-            <span class="cat-name">${cat.name}</span>
-            <span class="cat-percent">${cat.percent}%</span>
+    appData.config.forEach(cat => {
+      const balance = appData.personalBanks[cat.id] || 0;
+      totalPersonal += balance;
+      workContainer.innerHTML += 
+        <div class="category-wrapper">
+          <div class="category" onclick="toggleSpendBlock('${cat.id}')">
+            <div class="cat-info">
+              <span class="cat-name">${cat.name}</span>
+              <span class="cat-percent">${cat.percent}%</span>
+            </div>
+            <span class="cat-value">${balance.toFixed(2)}</span>
           </div>
-          <span class="cat-value">${balance.toFixed(2)}</span>
+          <div class="spend-area" id="spend-area-${cat.id}">
+            <input type="number" id="spend-input-${cat.id}" placeholder="Сумма расхода" inputmode="decimal">
+            <button class="btn-spend" onclick="spendMoney('${cat.id}', 'personal')">Списать</button>
+          </div>
         </div>
-        <div class="spend-area" id="spend-area-${cat.id}">
-          <input type="number" id="spend-input-${cat.id}" placeholder="Сумма расхода" inputmode="decimal">
-          <button class="btn-spend" onclick="spendMoney('${cat.id}', 'personal')">Списать</button>
+      ;
+    });
+    document.getElementById('total-personal').innerText = totalPersonal.toFixed(2);
+
+    const wsContainer = document.getElementById('workshop-categories');
+    wsContainer.innerHTML = 
+      <div class="category-wrapper">
+        <div class="category" onclick="toggleSpendBlock('amortization')">
+           <div class="cat-info"><span class="cat-name">Амортизация (30%)</span></div>
+           <span class="cat-value">${appData.workshop.amortization.toFixed(2)}</span>
+        </div>
+        <div class="spend-area" id="spend-area-amortization">
+          <input type="number" id="spend-input-amortization" placeholder="Расход (материалы)" inputmode="decimal">
+          <button class="btn-spend" onclick="spendMoney('amortization', 'workshop')">Списать</button>
+        </div>
+      </div>
+      <div class="category-wrapper" style="border: 1px dashed var(--accent);">
+        <div class="category" onclick="toggleSpendBlock('profit')">
+           <div class="cat-info"><span class="cat-name">Прибыль (70%)</span></div>
+           <span class="cat-value">${appData.workshop.profit.toFixed(2)}</span>
+        </div>
+        <div class="spend-area" id="spend-area-profit">
+          <input type="number" id="spend-input-profit" placeholder="Снять наличные" inputmode="decimal">
+          <button class="btn-spend" onclick="spendMoney('profit', 'workshop')">Списать</button>
         </div>
       </div>
     ;
-  });
-  document.getElementById('total-personal').innerText = totalPersonal.toFixed(2);
 
-  const wsContainer = document.getElementById('workshop-categories');
-  wsContainer.innerHTML = 
-    <div class="category-wrapper">
-      <div class="category" onclick="toggleSpendBlock('amortization')">
-         <div class="cat-info"><span class="cat-name">Амортизация (30%)</span></div>
-         <span class="cat-value">${appData.workshop.amortization.toFixed(2)}</span>
-      </div>
-      <div class="spend-area" id="spend-area-amortization">
-        <input type="number" id="spend-input-amortization" placeholder="Расход (материалы)" inputmode="decimal">
-        <button class="btn-spend" onclick="spendMoney('amortization', 'workshop')">Списать</button>
-      </div>
-    </div>
-    <div class="category-wrapper" style="border: 1px dashed var(--accent);">
-      <div class="category" onclick="toggleSpendBlock('profit')">
-         <div class="cat-info"><span class="cat-name">Прибыль (70%)</span></div>
-         <span class="cat-value">${appData.workshop.profit.toFixed(2)}</span>
-      </div>
-      <div class="spend-area" id="spend-area-profit">
-        <input type="number" id="spend-input-profit" placeholder="Снять наличные" inputmode="decimal">
-        <button class="btn-spend" onclick="spendMoney('profit', 'workshop')">Списать</button>
-      </div>
-    </div>
-  ;
-
-  const settingsContainer = document.getElementById('settings-list');
-  settingsContainer.innerHTML = '';
-  appData.config.forEach(cat => {
-    settingsContainer.innerHTML += 
-      <div class="setting-row">
-        <span>${cat.name}</span>
-        <div><input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> %</div>
-      </div>
-    ;
-  });
-  checkSettingsSum();
+    const settingsContainer = document.getElementById('settings-list');
+    settingsContainer.innerHTML = '';
+    appData.config.forEach(cat => {
+      settingsContainer.innerHTML += 
+        <div class="setting-row">
+          <span>${cat.name}</span>
+          <div><input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> %</div>
+        </div>
+      ;
+    });
+    checkSettingsSum();
+  } catch (error) {
+    alert("Ошибка отрисовки интерфейса: " + error.message);
+  }
 }
 
 renderUI();
