@@ -31,7 +31,7 @@
     input:focus { border-color: var(--accent); }
     
     button { background-color: var(--accent); color: white; border: none; padding: 12px 15px; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
-    button:disabled { background-color: #333; color: #777; }
+    button:disabled { background-color: #333; color: #777; cursor: not-allowed; }
     .btn-transfer { background-color: #203442; border: 1px solid var(--accent); margin-top: 10px; width: 100%; }
     .btn-spend { background-color: var(--spend-color); padding: 10px 15px; font-size: 14px; }
     
@@ -48,14 +48,24 @@
     .spend-area input { padding: 10px; font-size: 14px; }
     
     .total-balance { font-size: 14px; color: var(--text-muted); }
-    .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .setting-row span { font-size: 15px; }
-    .setting-row input { max-width: 80px; text-align: center; padding: 8px; }
-    #settings-status { font-size: 14px; margin-top: 10px; text-align: center; }
+    
+    /* Новые стили для режима чтения/редактирования */
+    .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; }
+    .setting-name { 
+      background: transparent; border: 1px solid transparent; color: white; 
+      padding: 8px 4px; flex: 1; border-radius: 4px; font-size: 15px; outline: none; transition: 0.2s;
+    }
+    .setting-name:not([readonly]) { background: rgba(0,0,0,0.3); border: 1px dashed var(--accent); }
+    .setting-input { width: 60px; text-align: center; padding: 8px; font-size: 14px; }
+    
+    .btn-action { background: none; border: none; cursor: pointer; font-size: 16px; padding: 5px; opacity: 0.8; }
+    .btn-action:hover { opacity: 1; }
+    .add-row { padding-top: 15px; margin-top: 15px; border-top: 1px dashed #2B3D4A; }
+    
+    #settings-status { font-size: 14px; margin-top: 10px; text-align: center; font-weight: bold; }
     .status-error { color: var(--spend-color); }
     .status-ok { color: #4CAF50; }
 
-    /* Стили для истории транзакций */
     .history-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 5px; }
     .history-item { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 10px; border-left: 4px solid transparent; font-size: 14px; }
     .history-item.income { border-left-color: #4CAF50; }
@@ -81,7 +91,7 @@
     </div>
     <div class="input-group">
       <input type="number" id="work-income" placeholder="Сумма с работы" inputmode="decimal">
-      <button onclick="addWorkIncome()">Внести</button>
+      <button id="btn-add-work" onclick="addWorkIncome()">Внести</button>
     </div>
     <div class="categories" id="work-categories"></div>
   </div>
@@ -96,7 +106,6 @@
     <button class="btn-transfer" onclick="transferToPersonal()">Перевести прибыль</button>
   </div>
 
-  <!-- Блок истории -->
   <div class="block">
     <div class="block-title">
       История
@@ -106,10 +115,10 @@
   </div>
 
   <div class="block block-settings">
-    <div class="block-title">Настройка распределения (%)</div>
+    <div class="block-title">Категории и распределение</div>
     <div id="settings-list"></div>
     <div id="settings-status" class="status-ok">Сумма: 100%</div>
-    <button id="btn-save-settings" class="btn-transfer" onclick="saveSettings()">Сохранить пропорции</button>
+    <button id="btn-save-settings" class="btn-transfer" onclick="saveSettings(true)">Сохранить изменения</button>
   </div>
 
   <script>
@@ -126,12 +135,7 @@
       { id: 'clothes', name: 'Одежда', percent: 10 }
     ];
 
-    let appData = {
-      personalBanks: {},
-      workshop: { amortization: 0, profit: 0 },
-      config: [],
-      history: [] // Добавлен массив для истории
-    };
+    let appData = { personalBanks: {}, workshop: { amortization: 0, profit: 0 }, config: [], history: [] };
 
     function initEmptyBanks() {
       appData.config = JSON.parse(JSON.stringify(defaultPersonalConfig));
@@ -141,53 +145,141 @@
     }
 
     try {
-      const saved = localStorage.getItem('gkFinanceData_v5');
+      const saved = localStorage.getItem('gkFinanceData_v7');
       if (saved) {
         appData = JSON.parse(saved);
-        if (!appData.history) appData.history = []; // Защита для старых сохранений
+        if (!appData.history) appData.history = [];
       } else {
         initEmptyBanks();
       }
-    } catch (e) {
-      initEmptyBanks();
-    }
+    } catch (e) { initEmptyBanks(); }
 
     function saveData() {
-      try { localStorage.setItem('gkFinanceData_v5', JSON.stringify(appData)); } catch (e) {}
+      try { localStorage.setItem('gkFinanceData_v7', JSON.stringify(appData)); } catch (e) {}
       renderUI();
     }
 
-    // --- Функция добавления записи в историю ---
     function logHistory(text, type) {
       const now = new Date();
-      // Формируем красивую дату: "04.10.2026 14:30"
       const dateStr = now.toLocaleDateString('ru-RU') + ' ' + now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
-      
-      // Добавляем запись в начало массива
       appData.history.unshift({ date: dateStr, text: text, type: type });
-      
-      // Оставляем только последние 50 записей, чтобы не забивать память
-      if (appData.history.length > 50) {
-        appData.history.pop();
-      }
+      if (appData.history.length > 50) appData.history.pop();
     }
 
     function clearHistory() {
-      if (confirm("Вы уверены, что хотите удалить всю историю? Балансы останутся без изменений.")) {
+      if (confirm("Удалить всю историю? Балансы останутся без изменений.")) {
         appData.history = [];
         saveData();
       }
     }
 
-    // --- Логика финансов с логированием ---
+    // Включение/выключение режима редактирования названия
+    function toggleEdit(id) {
+      const input = document.getElementById('cat-name-' + id);
+      const btn = document.getElementById('btn-edit-' + id);
+      
+      if (input.hasAttribute('readonly')) {
+        input.removeAttribute('readonly');
+        btn.innerText = '✅';
+        input.focus();
+        // Ставим курсор в конец текста
+        const val = input.value;
+        input.value = '';
+        input.value = val;
+      } else {
+        input.setAttribute('readonly', true);
+        btn.innerText = '✏️';
+        saveSettings(false); // Сохраняем скрыто
+      }
+    }
+
+    function saveSettings(showAlert = false) {
+      const pInputs = document.querySelectorAll('.setting-input:not(#new-cat-percent)');
+      const nInputs = document.querySelectorAll('.setting-name:not(#new-cat-name)');
+      
+      pInputs.forEach((input, index) => {
+        const id = input.dataset.id;
+        const newPercent = parseFloat(input.value) || 0;
+        const newName = nInputs[index].value.trim() || 'Категория';
+        
+        const cat = appData.config.find(c => c.id === id);
+        if(cat) {
+          cat.percent = newPercent;
+          cat.name = newName;
+        }
+      });
+      
+      if (showAlert) {
+        saveData(); // saveData вызовет renderUI, что автоматически сбросит все поля в readonly
+        alert("Настройки и категории сохранены!");
+      }
+    }
+
+    function addNewCategory() {
+      saveSettings(false);
+      const nameInput = document.getElementById('new-cat-name');
+      const percInput = document.getElementById('new-cat-percent');
+      const name = nameInput.value.trim();
+      const perc = parseFloat(percInput.value) || 0;
+
+      if (!name) { alert("Введите название новой категории!"); return; }
+
+      const id = 'cat_' + Date.now();
+      appData.config.push({ id: id, name: name, percent: perc });
+      appData.personalBanks[id] = 0;
+      
+      logHistory(`Добавлена категория: ${name}`, 'transfer');
+      saveData();
+    }
+
+    function deleteCategory(id) {
+      if (appData.personalBanks[id] > 0) {
+        alert("Ошибка! На балансе есть деньги. Сначала спишите или переведите их.");
+        return;
+      }
+      
+      if (confirm("Вы точно хотите удалить эту категорию?")) {
+        saveSettings(false);
+        const index = appData.config.findIndex(c => c.id === id);
+        if (index > -1) {
+          logHistory(`Удалена категория: ${appData.config[index].name}`, 'transfer');
+          appData.config.splice(index, 1);
+          delete appData.personalBanks[id];
+          saveData();
+        }
+      }
+    }
+
+    function checkSettingsSum() {
+      let sum = 0;
+      const inputs = document.querySelectorAll('.setting-input:not(#new-cat-percent)');
+      inputs.forEach(input => sum += parseFloat(input.value) || 0);
+      
+      const statusEl = document.getElementById('settings-status');
+      const btnAddWork = document.getElementById('btn-add-work');
+      if(!statusEl) return;
+
+      if (sum === 100) {
+        statusEl.innerText = 'Сумма: 100%';
+        statusEl.className = 'status-ok';
+        if(btnAddWork) btnAddWork.disabled = false;
+      } else {
+        statusEl.innerText = 'Сумма: ' + sum + '% (Нужно 100%)';
+        statusEl.className = 'status-error';
+        if(btnAddWork) btnAddWork.disabled = true;
+      }
+    }
+
     function addWorkIncome(amount = null) {
+      const currentSum = appData.config.reduce((acc, cat) => acc + cat.percent, 0);
+      if (currentSum !== 100) { alert("Внимание! Настройте категории до 100% и нажмите 'Сохранить изменения'."); return; }
+
       const input = document.getElementById('work-income');
       const val = amount !== null ? amount : parseFloat(input.value);
       if (isNaN(val) || val <= 0) return;
       
       appData.config.forEach(cat => appData.personalBanks[cat.id] += val * (cat.percent / 100));
       if (amount === null) logHistory(`Пополнение ЗП: +${val.toFixed(2)} BYN`, 'income');
-      
       if (input) input.value = '';
       saveData();
     }
@@ -200,7 +292,6 @@
       appData.workshop.amortization += val * 0.30;
       appData.workshop.profit += val * 0.70;
       logHistory(`Доход мастерской: +${val.toFixed(2)} BYN`, 'income');
-      
       if (input) input.value = '';
       saveData();
     }
@@ -208,7 +299,9 @@
     function transferToPersonal() {
       const amountToTransfer = appData.workshop.profit;
       if (amountToTransfer <= 0) return;
-      
+      const currentSum = appData.config.reduce((acc, cat) => acc + cat.percent, 0);
+      if (currentSum !== 100) { alert("Исправьте проценты распределения до 100%!"); return; }
+
       appData.workshop.profit = 0;
       addWorkIncome(amountToTransfer);
       logHistory(`Перевод прибыли в личный: ${amountToTransfer.toFixed(2)} BYN`, 'transfer');
@@ -233,49 +326,13 @@
         appData.workshop[id] -= val;
         catName = id === 'amortization' ? 'Амортизация' : 'Прибыль';
       }
-      
       logHistory(`Списание (${catName}): -${val.toFixed(2)} BYN`, 'expense');
-
       if (input) input.value = ''; 
       toggleSpendBlock(id); 
       saveData();
     }
 
-    function checkSettingsSum() {
-      let sum = 0;
-      const inputs = document.querySelectorAll('.setting-input');
-      inputs.forEach(input => sum += parseFloat(input.value) || 0);
-      
-      const statusEl = document.getElementById('settings-status');
-      const btnSave = document.getElementById('btn-save-settings');
-      if(!statusEl || !btnSave) return;
-
-      if (sum === 100) {
-        statusEl.innerText = 'Сумма: 100%';
-        statusEl.className = 'status-ok';
-        btnSave.disabled = false;
-      } else {
-        statusEl.innerText = 'Сумма: ' + sum + '% (Нужно 100%)';
-        statusEl.className = 'status-error';
-        btnSave.disabled = true;
-      }
-    }
-
-    function saveSettings() {
-      const inputs = document.querySelectorAll('.setting-input');
-      inputs.forEach(input => {
-        const id = input.dataset.id;
-        const newPercent = parseFloat(input.value) || 0;
-        const cat = appData.config.find(c => c.id === id);
-        if(cat) cat.percent = newPercent;
-      });
-      saveData();
-      alert("Новые пропорции сохранены!");
-    }
-
-    // --- Отрисовка интерфейса ---
     function renderUI() {
-      // 1. Личный бюджет
       const workContainer = document.getElementById('work-categories');
       if(workContainer) {
         workContainer.innerHTML = '';
@@ -303,7 +360,6 @@
         if(totalEl) totalEl.innerText = totalPersonal.toFixed(2);
       }
 
-      // 2. Мастерская
       const wsContainer = document.getElementById('workshop-categories');
       if(wsContainer) {
         wsContainer.innerHTML = `
@@ -330,22 +386,6 @@
         `;
       }
 
-      // 3. Настройки
-      const settingsContainer = document.getElementById('settings-list');
-      if(settingsContainer) {
-        settingsContainer.innerHTML = '';
-        appData.config.forEach(cat => {
-          settingsContainer.innerHTML += `
-            <div class="setting-row">
-              <span>${cat.name}</span>
-              <div><input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> %</div>
-            </div>
-          `;
-        });
-        checkSettingsSum();
-      }
-
-      // 4. Отрисовка Истории
       const historyContainer = document.getElementById('history-container');
       if(historyContainer) {
         if (appData.history.length === 0) {
@@ -361,6 +401,39 @@
             `;
           });
         }
+      }
+
+      const settingsContainer = document.getElementById('settings-list');
+      if(settingsContainer) {
+        let settingsHTML = '';
+        appData.config.forEach(cat => {
+          settingsHTML += `
+            <div class="setting-row">
+              <div style="display:flex; flex:1; align-items:center;">
+                <input type="text" id="cat-name-${cat.id}" class="setting-name" data-id="${cat.id}" value="${cat.name}" readonly>
+                <button class="btn-action" id="btn-edit-${cat.id}" onclick="toggleEdit('${cat.id}')">✏️</button>
+              </div>
+              <div style="display:flex; align-items:center;">
+                <input type="number" class="setting-input" data-id="${cat.id}" value="${cat.percent}" oninput="checkSettingsSum()"> <span style="margin: 0 5px;">%</span>
+                <button class="btn-action" onclick="deleteCategory('${cat.id}')">❌</button>
+              </div>
+            </div>
+          `;
+        });
+        
+        settingsHTML += `
+          <div class="setting-row add-row">
+            <div style="display:flex; flex:1; align-items:center;">
+               <input type="text" id="new-cat-name" class="setting-name" placeholder="Новая категория..." style="border: 1px dashed #2B3D4A; background: rgba(0,0,0,0.3);">
+            </div>
+            <div style="display:flex; align-items:center;">
+              <input type="number" id="new-cat-percent" class="setting-input" placeholder="0" style="border: 1px solid #2B3D4A;" oninput="checkSettingsSum()"> <span style="margin: 0 5px;">%</span>
+              <button class="btn-action" onclick="addNewCategory()">➕</button>
+            </div>
+          </div>
+        `;
+        settingsContainer.innerHTML = settingsHTML;
+        checkSettingsSum();
       }
     }
 
